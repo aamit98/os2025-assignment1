@@ -7,5 +7,5 @@ main(int argc, char *argv[])
 {
     printf("Hello World xv6");
 
-    exit(0);
+    exit(0,"");
 }

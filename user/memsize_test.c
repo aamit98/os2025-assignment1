@@ -17,5 +17,5 @@ main(int argc, char *argv[])
     printf("after freeing: %d\n",(int)ms);
 
 
-    exit(0);
+    exit(0,"");
 }

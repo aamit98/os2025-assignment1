@@ -410,7 +410,7 @@ wait(uint64 addr,char* msg)
 
         havekids = 1;
         if(pp->state == ZOMBIE){
-          copyout(p->pagetable,(uint64)p->exit_msg,pp->exit_msg,strlen(pp->exit_msg) + 1);
+          copyout(p->pagetable,(uint64)msg,pp->exit_msg,strlen(pp->exit_msg) + 1);
           // Found one.
           pid = pp->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,

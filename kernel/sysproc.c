@@ -11,7 +11,7 @@ sys_exit(void)
 {
   int n;
   argint(0, &n);
-  exit(n);
+  exit(n,"");
   return 0;  // not reached
 }
 
@@ -32,7 +32,7 @@ sys_wait(void)
 {
   uint64 p;
   argaddr(0, &p);
-  return wait(p);
+  return wait(p,"");
 }
 
 uint64
