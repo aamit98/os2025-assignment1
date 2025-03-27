@@ -6,15 +6,15 @@ int
 main(int argc, char *argv[])
 {
     uint64 ms = memsize();
-    printf("start: %llu\n",(unsigned long long)ms);
+    printf("start: %d\n",(int)ms);
     
     int* temp = (int*)malloc(20000);
     ms = memsize();
-    printf("after adding: %llu\n",(unsigned long long)ms);
+    printf("after adding: %d\n",(int)ms);
 
     free(temp);
     ms = memsize();
-    printf("after freeing: %llu\n",(unsigned long long)ms);
+    printf("after freeing: %d\n",(int)ms);
 
 
     exit(0);
