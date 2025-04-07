@@ -1,5 +1,5 @@
 struct stat;
-
+typedef unsigned int uint;
 // system calls
 int fork(void);
 int exit(int,char*) __attribute__((noreturn));
@@ -40,3 +40,5 @@ void free(void*);
 int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
+int forkn(int n ,int* pids);
+int waitall(int *n , int *statuses);

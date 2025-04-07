@@ -368,13 +368,10 @@ void exit(int status,char* msg)
 
   acquire(&wait_lock);
 
-  strncpy(p->exit_msg, msg, strlen(msg));
-    p->exit_msg[31] = '\0';
+  safestrcpy(p->exit_msg, msg, sizeof(p->exit_msg));
 
-  // Give any children to init.
   reparent(p);
 
-  // Parent might be sleeping in wait().
   wakeup(p->parent);
   
   acquire(&p->lock);
@@ -410,8 +407,11 @@ wait(uint64 addr,char* msg)
 
         havekids = 1;
         if(pp->state == ZOMBIE){
-          copyout(p->pagetable,(uint64)msg,pp->exit_msg,strlen(pp->exit_msg) + 1);
-          // Found one.
+          if(msg != 0){
+            // child’s exit_msg => user’s buffer
+            copyout(p->pagetable, (uint64)msg,
+                    pp->exit_msg, strlen(pp->exit_msg) + 1);
+          }
           pid = pp->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
@@ -428,13 +428,11 @@ wait(uint64 addr,char* msg)
       }
     }
 
-    // No point waiting if we don't have any children.
     if(!havekids || killed(p)){
       release(&wait_lock);
       return -1;
     }
     
-    // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
 }
@@ -686,3 +684,151 @@ procdump(void)
     printf("\n");
   }
 }
+
+int forkn(int n, int *pids) {
+  struct proc *p = myproc();
+  struct proc *kids[16];
+  int pids_local[16];
+  int i, created = 0;
+
+  if(n < 1 || n > 16)
+    return -1;
+
+  for(i = 0; i < n; i++){
+    struct proc *np = allocproc();
+    if(!np){
+      for(int j = 0; j < created; j++){
+        struct proc *child = kids[j];
+        acquire(&child->lock);
+        child->state = UNUSED;
+        freeproc(child);
+        release(&child->lock);
+      }
+      return -1;
+    }
+    pids_local[i] = np->pid;
+    
+    if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+      freeproc(np);
+      for(int j = 0; j < created; j++){
+        struct proc *child = kids[j];
+        acquire(&child->lock);
+        child->state = UNUSED;
+        freeproc(child);
+        release(&child->lock);
+      }
+      return -1;
+    }
+    np->sz = p->sz;
+    *(np->trapframe) = *(p->trapframe);
+    np->trapframe->a0 = i + 1;
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(p->ofile[fd])
+        np->ofile[fd] = filedup(p->ofile[fd]);
+    }
+    np->cwd = idup(p->cwd);
+    safestrcpy(np->name, p->name, sizeof(np->name));
+    
+    release(&np->lock);
+    
+    kids[i] = np;
+    created++;
+  }
+
+  acquire(&wait_lock);
+  for(i = 0; i < n; i++){
+    struct proc *child = kids[i];
+    child->parent = p;
+    acquire(&child->lock);
+    child->state = RUNNABLE;
+    release(&child->lock);
+  }
+  release(&wait_lock);
+
+  if(pids){
+    if(copyout(p->pagetable, (uint64)pids, (char*)pids_local, n * sizeof(int)) < 0)
+      return -1;
+  }
+  return 0;
+}
+
+
+int
+waitall(int* n_addr, int* statuses_addr)
+{
+  struct proc *p = myproc();
+  struct proc *pp;
+  int count = 0;
+  int statuses_local[NPROC];  // temporary array to hold exit statuses
+  struct proc *to_free[NPROC]; // temporary array to store pointers for later free
+  int free_count = 0;
+  int foundChild = 0;
+
+  // Zero out statuses_local.
+  for (int i = 0; i < NPROC; i++) {
+    statuses_local[i] = 0;
+  }
+
+  acquire(&wait_lock);
+
+  for (;;) {
+    int allDone = 1;  // assume all children are done until we find one that isn't
+    count = 0;
+    free_count = 0;
+    foundChild = 0;
+    // Scan through the process table.
+    for (pp = proc; pp < &proc[NPROC]; pp++) {
+      acquire(&pp->lock);
+      if (pp->parent == p) {
+        foundChild = 1;
+        if (pp->state != ZOMBIE) {
+          allDone = 0;
+        } else {
+          statuses_local[count] = pp->xstate;
+          // Record pointer for later free instead of freeing immediately.
+          to_free[free_count++] = pp;
+        }
+        count++;
+      }
+      release(&pp->lock);
+    }
+
+    if (!foundChild) {
+      // No children found.
+      release(&wait_lock);
+      if(n_addr){
+        int zero = 0;
+        copyout(p->pagetable, (uint64)n_addr, (char*)&zero, sizeof(zero));
+      }
+      return 0;
+    }
+
+    if (allDone) {
+      // All children have exited; now free them.
+      for (int i = 0; i < free_count; i++) {
+        struct proc *child = to_free[i];
+        acquire(&child->lock);
+        freeproc(child);
+        release(&child->lock);
+      }
+      release(&wait_lock);
+      // Copy the total count and statuses array to user space.
+      if(n_addr){
+        copyout(p->pagetable, (uint64)n_addr, (char*)&count, sizeof(count));
+      }
+      if(statuses_addr){
+        copyout(p->pagetable, (uint64)statuses_addr, (char*)statuses_local,
+                count * sizeof(int));
+      }
+      return 0;
+    }
+
+    if (killed(p)) {
+      release(&wait_lock);
+      return -1;
+    }
+    // Sleep on our process pointer with wait_lock held.
+    sleep(p, &wait_lock);
+  }
+}
+

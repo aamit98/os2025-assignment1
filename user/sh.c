@@ -165,11 +165,19 @@ main(void)
         fprintf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(fork1() == 0)
+    if(fork1() == 0){
       runcmd(parsecmd(buf));
-    char msg[32];
-    wait(0,msg);
-    printf("%s",msg);
+    }
+      int child_status;
+      char msg[32];
+      
+      // Wait for the child. We now have two arguments in wait(...).
+      wait(&child_status, msg);
+      
+      // Print the child's exit message on a new line (if not empty).
+      if(msg[0] != '\0'){
+        printf("%s\n", msg);
+      }
   }
   exit(0,"");
 }

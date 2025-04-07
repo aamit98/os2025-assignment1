@@ -6,13 +6,29 @@
 #include "spinlock.h"
 #include "proc.h"
 
+
 uint64
 sys_exit(void)
 {
-  int n;
-  argint(0, &n);
-  exit(n,"");
-  return 0;  // not reached
+  int status;
+  uint64 msgaddr;     
+  argint(0, &status);  // first arg: status
+  argaddr(1, &msgaddr);// second arg: pointer to msg
+
+  // We'll fetch the string from user space into a kernel buffer.
+  char msgbuf[32];
+  if(msgaddr != 0){
+    if(fetchstr(msgaddr, msgbuf, sizeof(msgbuf)) < 0){
+      // invalid pointer or too long => just empty
+      msgbuf[0] = '\0';
+    }
+  } else {
+    // if user passed NULL
+    msgbuf[0] = '\0';
+  }
+
+  exit(status, msgbuf);
+  return 0; // not reached
 }
 
 uint64
@@ -30,9 +46,12 @@ sys_fork(void)
 uint64
 sys_wait(void)
 {
-  uint64 p;
-  argaddr(0, &p);
-  return wait(p,"");
+  uint64 statusaddr; 
+  uint64 msgaddr;   
+  argaddr(0, &statusaddr);
+  argaddr(1, &msgaddr);
+
+  return wait(statusaddr, (char*) msgaddr);
 }
 
 uint64
@@ -96,4 +115,26 @@ uint64 sys_memsize(void){
   size = myproc()->sz;
   
   return size;
+}
+
+uint64
+sys_forkn(void)
+{
+  int n;  
+  uint64 pids_addr;     
+  argint(0, &n);  
+  argaddr(1, &pids_addr);
+
+  return forkn(n, (int*)pids_addr);
+}
+
+uint64
+sys_waitall(void)
+{
+  uint64 n_addr;
+  uint64 statuses_addr;
+  argaddr(0, &n_addr);
+  argaddr(1, &statuses_addr);
+  return waitall((int*)n_addr, (int*)statuses_addr);
+
 }
